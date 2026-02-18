@@ -98,6 +98,8 @@ export default function (pi: ExtensionAPI) {
 
 			const currentId = ctx.model?.id;
 
+			const label = targetId.includes("opus") ? "opus 4.6" : "sonnet 4.6";
+
 			if (currentId !== targetId) {
 				const targetModel = ctx.modelRegistry.find("anthropic", targetId);
 				if (!targetModel) {
@@ -107,19 +109,13 @@ export default function (pi: ExtensionAPI) {
 				const success = await pi.setModel(targetModel);
 				if (success) {
 					lastRouted = targetId;
-					ctx.ui.setStatus(
-						"router",
-						`→ ${targetId.includes("opus") ? "opus" : "sonnet"}`
-					);
+					ctx.ui.setStatus("router", `→ ${label}`);
 				} else {
 					ctx.ui.setStatus("router", `⚠ setModel failed for ${targetId}`);
 				}
 			} else {
 				lastRouted = targetId;
-				ctx.ui.setStatus(
-					"router",
-					`→ ${targetId.includes("opus") ? "opus" : "sonnet"}`
-				);
+				ctx.ui.setStatus("router", `→ ${label}`);
 			}
 		} catch (e) {
 			ctx.ui.setStatus("router", `⚠ ${e instanceof Error ? e.message : String(e)}`);
