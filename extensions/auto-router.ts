@@ -46,33 +46,35 @@ export default function (pi: ExtensionAPI) {
 	let pinnedModel: string | undefined; // set by /opus, /sonnet; cleared by /auto
 
 	// Slash commands: /opus, /sonnet, /auto
-	pi.on("input", async (event, ctx) => {
-		const text = event.text.trim();
-
-		if (text === "/opus") {
+	pi.registerCommand("opus", {
+		description: "Pin router to Opus for all turns. Use /auto to resume.",
+		handler: async (_args, ctx) => {
 			pinnedModel = OPUS_ID;
 			const model = ctx.modelRegistry.find("anthropic", OPUS_ID);
 			if (model) await pi.setModel(model);
 			ctx.ui.setStatus("router", "📌 pinned → opus");
 			ctx.ui.notify("Router pinned to Opus. Type /auto to resume auto-routing.", "info");
-			return { action: "handled" as const };
-		}
+		},
+	});
 
-		if (text === "/sonnet") {
+	pi.registerCommand("sonnet", {
+		description: "Pin router to Sonnet for all turns. Use /auto to resume.",
+		handler: async (_args, ctx) => {
 			pinnedModel = SONNET_ID;
 			const model = ctx.modelRegistry.find("anthropic", SONNET_ID);
 			if (model) await pi.setModel(model);
 			ctx.ui.setStatus("router", "📌 pinned → sonnet");
 			ctx.ui.notify("Router pinned to Sonnet. Type /auto to resume auto-routing.", "info");
-			return { action: "handled" as const };
-		}
+		},
+	});
 
-		if (text === "/auto") {
+	pi.registerCommand("auto", {
+		description: "Resume automatic model routing (Haiku classifies each prompt).",
+		handler: async (_args, ctx) => {
 			pinnedModel = undefined;
 			ctx.ui.setStatus("router", "auto-routing resumed");
 			ctx.ui.notify("Auto-routing resumed.", "info");
-			return { action: "handled" as const };
-		}
+		},
 	});
 
 	// Track manual model changes (Ctrl+P, Ctrl+L) — respect them for one turn
