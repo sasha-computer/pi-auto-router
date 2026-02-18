@@ -98,7 +98,7 @@ export default function (pi: ExtensionAPI) {
 
 			const currentId = ctx.model?.id;
 
-			const label = targetId.includes("opus") ? "opus 4.6" : "sonnet 4.6";
+			const label = `request routed to ${targetId.includes("opus") ? "opus 4.6" : "sonnet 4.6"}`;
 
 			if (currentId !== targetId) {
 				const targetModel = ctx.modelRegistry.find("anthropic", targetId);
