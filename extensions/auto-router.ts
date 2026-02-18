@@ -43,6 +43,37 @@ When in doubt, pick sonnet. Only pick opus when the task genuinely needs deeper 
 export default function (pi: ExtensionAPI) {
 	let lastRouted: string | undefined;
 	let manualOverride = false;
+	let pinnedModel: string | undefined; // set by /opus, /sonnet; cleared by /auto
+
+	// Slash commands: /opus, /sonnet, /auto
+	pi.on("input", async (event, ctx) => {
+		const text = event.text.trim();
+
+		if (text === "/opus") {
+			pinnedModel = OPUS_ID;
+			const model = ctx.modelRegistry.find("anthropic", OPUS_ID);
+			if (model) await pi.setModel(model);
+			ctx.ui.setStatus("router", "📌 pinned → opus");
+			ctx.ui.notify("Router pinned to Opus. Type /auto to resume auto-routing.", "info");
+			return { action: "handled" as const };
+		}
+
+		if (text === "/sonnet") {
+			pinnedModel = SONNET_ID;
+			const model = ctx.modelRegistry.find("anthropic", SONNET_ID);
+			if (model) await pi.setModel(model);
+			ctx.ui.setStatus("router", "📌 pinned → sonnet");
+			ctx.ui.notify("Router pinned to Sonnet. Type /auto to resume auto-routing.", "info");
+			return { action: "handled" as const };
+		}
+
+		if (text === "/auto") {
+			pinnedModel = undefined;
+			ctx.ui.setStatus("router", "auto-routing resumed");
+			ctx.ui.notify("Auto-routing resumed.", "info");
+			return { action: "handled" as const };
+		}
+	});
 
 	// Track manual model changes (Ctrl+P, Ctrl+L) — respect them for one turn
 	pi.on("model_select", async (event, ctx) => {
@@ -52,9 +83,21 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("before_agent_start", async (event, ctx) => {
-		// Skip if user manually picked a model
+		// Skip if user manually picked a model (one-turn override)
 		if (manualOverride) {
 			manualOverride = false;
+			return;
+		}
+
+		// Skip if a model is pinned — just ensure we're on it
+		if (pinnedModel) {
+			const current = ctx.model?.id;
+			if (current !== pinnedModel) {
+				const model = ctx.modelRegistry.find("anthropic", pinnedModel);
+				if (model) await pi.setModel(model);
+			}
+			const label = pinnedModel.includes("opus") ? "opus" : "sonnet";
+			ctx.ui.setStatus("router", `📌 pinned → ${label}`);
 			return;
 		}
 
