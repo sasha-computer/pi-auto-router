@@ -1,6 +1,6 @@
 {
   "name": "pi-auto-router",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Automatically routes prompts to Sonnet or Opus based on complexity",
   "keywords": ["pi-package"],
   "license": "MIT",

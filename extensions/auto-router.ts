@@ -6,11 +6,12 @@
  * refactors), and the model is switched before the agent runs.
  *
  * Hooks used:
- * - input: intercepts the prompt, calls Haiku to classify, switches model
+ * - before_agent_start: classifies prompt with Haiku, switches model
  * - model_select: tracks manual overrides
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { completeSimple } from "@mariozechner/pi-ai";
 
 const SONNET_ID = "claude-sonnet-4-6";
 const OPUS_ID = "claude-opus-4-6";
@@ -62,62 +63,56 @@ export default function (pi: ExtensionAPI) {
 
 		// Find Haiku for classification
 		const haiku = ctx.modelRegistry.find("anthropic", HAIKU_ID);
-		if (!haiku) return;
+		if (!haiku) {
+			ctx.ui.setStatus("router", "⚠ haiku not found");
+			return;
+		}
 
 		const apiKey = await ctx.modelRegistry.getApiKey(haiku);
-		if (!apiKey) return;
+		if (!apiKey) {
+			ctx.ui.setStatus("router", "⚠ no API key for haiku");
+			return;
+		}
 
 		try {
 			ctx.ui.setStatus("router", "routing…");
 
-			const response = await fetch("https://api.anthropic.com/v1/messages", {
-				method: "POST",
-				headers: {
-					"content-type": "application/json",
-					"x-api-key": apiKey,
-					"anthropic-version": "2023-06-01",
-				},
-				body: JSON.stringify({
-					model: HAIKU_ID,
-					max_tokens: 16,
-					messages: [{ role: "user", content: prompt }],
-					system: CLASSIFY_PROMPT,
-				}),
-			});
+			const result = await completeSimple(haiku, {
+				systemPrompt: CLASSIFY_PROMPT,
+				messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+			}, { maxTokens: 16, apiKey });
 
-			if (!response.ok) {
-				ctx.ui.setStatus("router", undefined);
-				return;
-			}
-
-			const data = (await response.json()) as {
-				content: Array<{ type: string; text: string }>;
-			};
-			const answer = data.content?.[0]?.text?.trim().toLowerCase() ?? "";
+			const answer = result.content
+				.filter((c): c is { type: "text"; text: string } => c.type === "text")
+				.map((c) => c.text)
+				.join("")
+				.trim()
+				.toLowerCase();
 
 			let targetId: string;
 			if (answer.includes("opus")) {
 				targetId = OPUS_ID;
 			} else {
-				// Default to sonnet for anything unclear
 				targetId = SONNET_ID;
 			}
 
-			// Only switch if we're not already on the target
 			const currentId = ctx.model?.id;
+
 			if (currentId !== targetId) {
 				const targetModel = ctx.modelRegistry.find("anthropic", targetId);
-				if (targetModel) {
-					const success = await pi.setModel(targetModel);
-					if (success) {
-						lastRouted = targetId;
-						ctx.ui.setStatus(
-							"router",
-							`→ ${targetId.includes("opus") ? "opus" : "sonnet"}`
-						);
-					} else {
-						ctx.ui.setStatus("router", undefined);
-					}
+				if (!targetModel) {
+					ctx.ui.setStatus("router", `⚠ model not found: ${targetId}`);
+					return;
+				}
+				const success = await pi.setModel(targetModel);
+				if (success) {
+					lastRouted = targetId;
+					ctx.ui.setStatus(
+						"router",
+						`→ ${targetId.includes("opus") ? "opus" : "sonnet"}`
+					);
+				} else {
+					ctx.ui.setStatus("router", `⚠ setModel failed for ${targetId}`);
 				}
 			} else {
 				lastRouted = targetId;
@@ -127,8 +122,7 @@ export default function (pi: ExtensionAPI) {
 				);
 			}
 		} catch (e) {
-			// Classification failed — just use whatever model is active
-			ctx.ui.setStatus("router", undefined);
+			ctx.ui.setStatus("router", `⚠ ${e instanceof Error ? e.message : String(e)}`);
 		}
 	});
 }
