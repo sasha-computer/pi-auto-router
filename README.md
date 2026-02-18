@@ -1,36 +1,42 @@
-# pi-model-tier-coach
+# pi-auto-router
 
-A [pi](https://github.com/badlogic/pi-mono) extension that nudges you when your task doesn't match your model's cost tier.
+A [pi](https://github.com/badlogic/pi-mono) extension that automatically routes prompts to the right model.
 
-Using Opus to read a file? Waste. Using Haiku for a complex refactor? Underpowered. This extension adds a short system prompt instruction so the model flags the mismatch at the end of its response -- a quick nudge, not a lecture.
-
-Inspired by [@JordanLyall's tweet](https://x.com/JordanLyall/status/1891644803049427234).
+No more manual model switching. You type a prompt, Haiku classifies it (~300ms, fractions of a cent), and the request goes to Sonnet or Opus. Simple tasks go to Sonnet. Complex architecture, subtle debugging, and deep reasoning go to Opus.
 
 ## Install
 
 ```bash
-pi install npm:pi-model-tier-coach
+pi install npm:pi-auto-router
 ```
 
 Or try it without installing:
 
 ```bash
-pi -e npm:pi-model-tier-coach
+pi -e npm:pi-auto-router
 ```
 
 ## How it works
 
-The extension hooks into `before_agent_start` -- the event that fires after you submit a prompt but before the LLM runs. It checks which model is active, classifies it into a cost tier, and appends tier-specific instructions to the system prompt.
+The extension hooks into `before_agent_start`. Before each LLM call:
 
-**Tiers:**
+1. Sends your prompt to Haiku with a classification instruction
+2. Haiku responds with one word: `sonnet` or `opus`
+3. Extension calls `pi.setModel()` to switch to the right model
+4. Status bar shows `→ sonnet` or `→ opus` so you can see what it picked
 
-| Tier | Models | Behavior |
-|------|--------|----------|
-| Premium | Opus, o1, o3, GPT-4.5 | Nudges on simple tasks (reads, lookups, small edits) |
-| Standard | Sonnet, GPT-4o, Gemini Pro | Nudges on genuinely complex work (architecture, deep debugging) |
-| Budget | Haiku, mini, Flash | Nudges when the task is clearly too complex |
+**Manual override:** If you switch models with `Ctrl+P` or `Ctrl+L`, the router respects your choice for that turn, then resumes auto-routing.
 
-The nudge is always at the end of the response, never before the actual work. It won't repeat if it already nudged recently.
+**Models:**
+
+| Router | Target | When |
+|--------|--------|------|
+| Haiku 4.5 | Sonnet 4.6 | Most tasks: edits, lookups, commands, standard refactors |
+| Haiku 4.5 | Opus 4.6 | Complex: architecture, subtle bugs, multi-file refactors, deep reasoning |
+
+## Cost
+
+The Haiku classification call adds ~$0.0001 per prompt. Over a full day of coding, maybe $0.01-0.05 extra. The savings from not running Opus on simple tasks far outweigh this.
 
 ## License
 

@@ -1,88 +1,134 @@
 /**
- * Model tier coach - nudges when you're using the wrong model tier for the task.
+ * Auto model router — classifies each prompt with Haiku and routes to Sonnet or Opus.
  *
- * Inspired by @JordanLyall's tweet: "Call out when I'm using the wrong model tier.
- * Lookups on Opus = waste. Architecture on Sonnet = underpowered. Quick nudge, not a lecture."
+ * No more manual model switching. You type a prompt, Haiku decides if it needs
+ * Sonnet (most tasks) or Opus (complex architecture, subtle debugging, multi-file
+ * refactors), and the model is switched before the agent runs.
  *
  * Hooks used:
- * - before_agent_start: injects tier-awareness into the system prompt
- * - model_select: tracks the current model tier for the status bar
- *
- * The extension categorizes models into tiers (premium/standard/budget) based on
- * their ID and cost, then adds a one-line system prompt instruction telling the
- * model to flag mismatches between task complexity and model tier.
+ * - input: intercepts the prompt, calls Haiku to classify, switches model
+ * - model_select: tracks manual overrides
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 
-type Tier = "premium" | "standard" | "budget";
+const SONNET_ID = "claude-sonnet-4-6";
+const OPUS_ID = "claude-opus-4-6";
+const HAIKU_ID = "claude-haiku-4-5";
 
-interface TierInfo {
-	tier: Tier;
-	label: string;
-	costNote: string;
-}
+const CLASSIFY_PROMPT = `You are a model router. Given a user's prompt to a coding assistant, decide which model should handle it.
 
-/**
- * Classify a model into a cost tier based on its ID.
- */
-function classifyModel(modelId: string): TierInfo {
-	const id = modelId.toLowerCase();
+Reply with ONLY one word: "sonnet" or "opus".
 
-	// Premium tier: Opus, o1, o3, GPT-4.5, deepseek-r1
-	if (
-		id.includes("opus") ||
-		id.includes("o1-pro") ||
-		id.includes("o3-pro") ||
-		id.includes("gpt-4.5") ||
-		(id.includes("o1") && !id.includes("o1-mini")) ||
-		(id.includes("o3") && !id.includes("o3-mini"))
-	) {
-		return { tier: "premium", label: "Premium", costNote: "highest cost tier" };
-	}
+Use opus for:
+- Complex architecture and system design
+- Multi-file refactors with tricky interdependencies
+- Subtle debugging (race conditions, memory leaks, flaky tests)
+- Novel algorithm design
+- Nuanced writing or deep analysis
+- Tasks requiring long chains of reasoning
 
-	// Budget tier: Haiku, mini models, Flash, GPT-4o-mini
-	if (
-		id.includes("haiku") ||
-		id.includes("mini") ||
-		id.includes("flash") ||
-		id.includes("gpt-4o-mini") ||
-		id.includes("gemma")
-	) {
-		return { tier: "budget", label: "Budget", costNote: "lowest cost tier" };
-	}
+Use sonnet for everything else:
+- File reads, lookups, status checks
+- Simple to moderate code edits
+- Running commands
+- Straightforward questions
+- Standard refactors
+- Writing tests for existing code
+- Most everyday coding tasks
 
-	// Standard tier: Sonnet, GPT-4o, Gemini Pro, etc.
-	return { tier: "standard", label: "Standard", costNote: "mid cost tier" };
-}
-
-const TIER_PROMPTS: Record<Tier, string> = {
-	premium: `You are running on a PREMIUM (most expensive) model. If the user's request is simple — file reads, status checks, lookups, small edits, straightforward questions — give a brief one-line nudge at the END of your response suggesting they could switch to a cheaper model for this kind of task. Use a casual tone, e.g. "Heads up: this is a Sonnet-tier task, you could save tokens by switching down." Don't lecture, don't repeat the nudge if you already gave one recently, and never let it interfere with doing the actual work first.`,
-
-	standard: `You are running on a STANDARD (mid-tier) model. If the user's request involves genuinely complex work — large-scale architecture, multi-file refactors with tricky interdependencies, novel algorithm design, deep debugging of subtle issues — give a brief one-line nudge at the END of your response suggesting they might benefit from a more capable model for this specific task. Be conservative: most tasks are fine on this tier. Only nudge for truly hard stuff.`,
-
-	budget: `You are running on a BUDGET (cheapest) model. If the user's request is clearly too complex for this tier — architecture decisions, complex refactors, subtle debugging, multi-step reasoning — give a brief one-line nudge at the END of your response suggesting they switch up for this task. For simple lookups, reads, and small edits, this tier is perfect — no nudge needed.`,
-};
+When in doubt, pick sonnet. Only pick opus when the task genuinely needs deeper reasoning.`;
 
 export default function (pi: ExtensionAPI) {
-	let currentTier: TierInfo | null = null;
+	let lastRouted: string | undefined;
+	let manualOverride = false;
 
-	// Track model changes for status display
+	// Track manual model changes (Ctrl+P, Ctrl+L) — respect them for one turn
 	pi.on("model_select", async (event, ctx) => {
-		currentTier = classifyModel(event.model.id);
+		if (event.source === "cycle" || event.source === "set") {
+			manualOverride = true;
+		}
 	});
 
-	// Inject tier-awareness into the system prompt before each agent run
 	pi.on("before_agent_start", async (event, ctx) => {
-		if (!ctx.model) return;
+		// Skip if user manually picked a model
+		if (manualOverride) {
+			manualOverride = false;
+			return;
+		}
 
-		const tierInfo = classifyModel(ctx.model.id);
-		currentTier = tierInfo;
+		const prompt = event.prompt;
+		if (!prompt || prompt.trim().length === 0) return;
 
-		const tierPrompt = TIER_PROMPTS[tierInfo.tier];
+		// Find Haiku for classification
+		const haiku = ctx.modelRegistry.find("anthropic", HAIKU_ID);
+		if (!haiku) return;
 
-		return {
-			systemPrompt: event.systemPrompt + `\n\n## Model tier awareness\n${tierPrompt}`,
-		};
+		const apiKey = await ctx.modelRegistry.getApiKey(haiku);
+		if (!apiKey) return;
+
+		try {
+			ctx.ui.setStatus("router", "routing…");
+
+			const response = await fetch("https://api.anthropic.com/v1/messages", {
+				method: "POST",
+				headers: {
+					"content-type": "application/json",
+					"x-api-key": apiKey,
+					"anthropic-version": "2023-06-01",
+				},
+				body: JSON.stringify({
+					model: HAIKU_ID,
+					max_tokens: 16,
+					messages: [{ role: "user", content: prompt }],
+					system: CLASSIFY_PROMPT,
+				}),
+			});
+
+			if (!response.ok) {
+				ctx.ui.setStatus("router", undefined);
+				return;
+			}
+
+			const data = (await response.json()) as {
+				content: Array<{ type: string; text: string }>;
+			};
+			const answer = data.content?.[0]?.text?.trim().toLowerCase() ?? "";
+
+			let targetId: string;
+			if (answer.includes("opus")) {
+				targetId = OPUS_ID;
+			} else {
+				// Default to sonnet for anything unclear
+				targetId = SONNET_ID;
+			}
+
+			// Only switch if we're not already on the target
+			const currentId = ctx.model?.id;
+			if (currentId !== targetId) {
+				const targetModel = ctx.modelRegistry.find("anthropic", targetId);
+				if (targetModel) {
+					const success = await pi.setModel(targetModel);
+					if (success) {
+						lastRouted = targetId;
+						ctx.ui.setStatus(
+							"router",
+							`→ ${targetId.includes("opus") ? "opus" : "sonnet"}`
+						);
+					} else {
+						ctx.ui.setStatus("router", undefined);
+					}
+				}
+			} else {
+				lastRouted = targetId;
+				ctx.ui.setStatus(
+					"router",
+					`→ ${targetId.includes("opus") ? "opus" : "sonnet"}`
+				);
+			}
+		} catch (e) {
+			// Classification failed — just use whatever model is active
+			ctx.ui.setStatus("router", undefined);
+		}
 	});
 }

@@ -1,7 +1,7 @@
 {
-  "name": "pi-model-tier-coach",
-  "version": "0.1.0",
-  "description": "Nudges you when your task doesn't match your model's cost tier",
+  "name": "pi-auto-router",
+  "version": "0.2.0",
+  "description": "Automatically routes prompts to Sonnet or Opus based on complexity",
   "keywords": ["pi-package"],
   "license": "MIT",
   "peerDependencies": {
