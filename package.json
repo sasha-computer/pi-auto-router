@@ -1,0 +1,13 @@
+{
+  "name": "pi-model-tier-coach",
+  "version": "0.1.0",
+  "description": "Nudges you when your task doesn't match your model's cost tier",
+  "keywords": ["pi-package"],
+  "license": "MIT",
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions"]
+  }
+}
