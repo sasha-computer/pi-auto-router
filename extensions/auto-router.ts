@@ -44,9 +44,9 @@ When in doubt, pick sonnet. Only pick opus when the task genuinely needs deeper 
 export default function (pi: ExtensionAPI) {
 	let lastRouted: string | undefined;
 	let manualOverride = false;
-	let pinnedModel: string | undefined; // set by /opus, /sonnet; cleared by /auto
+	let pinnedModel: string | undefined; // set by /opus, /sonnet, /haiku; cleared by /auto
 
-	// Slash commands: /opus, /sonnet, /auto
+	// Slash commands: /opus, /sonnet, /haiku, /auto
 	pi.registerCommand("opus", {
 		description: "Pin router to Opus for all turns. Use /auto to resume.",
 		handler: async (_args, ctx) => {
@@ -66,6 +66,17 @@ export default function (pi: ExtensionAPI) {
 			if (model) await pi.setModel(model);
 			ctx.ui.setStatus("router", "📌 pinned → sonnet");
 			ctx.ui.notify("Router pinned to Sonnet. Type /auto to resume auto-routing.", "info");
+		},
+	});
+
+	pi.registerCommand("haiku", {
+		description: "Pin router to Haiku for all turns. Use /auto to resume.",
+		handler: async (_args, ctx) => {
+			pinnedModel = HAIKU_ID;
+			const model = ctx.modelRegistry.find("anthropic", HAIKU_ID);
+			if (model) await pi.setModel(model);
+			ctx.ui.setStatus("router", "📌 pinned → haiku");
+			ctx.ui.notify("Router pinned to Haiku. Type /auto to resume auto-routing.", "info");
 		},
 	});
 
@@ -99,7 +110,7 @@ export default function (pi: ExtensionAPI) {
 				const model = ctx.modelRegistry.find("anthropic", pinnedModel);
 				if (model) await pi.setModel(model);
 			}
-			const label = pinnedModel.includes("opus") ? "opus" : "sonnet";
+			const label = pinnedModel.includes("opus") ? "opus" : pinnedModel.includes("haiku") ? "haiku" : "sonnet";
 			ctx.ui.setStatus("router", `📌 pinned → ${label}`);
 			return;
 		}
