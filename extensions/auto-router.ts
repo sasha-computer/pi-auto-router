@@ -124,11 +124,12 @@ export default function (pi: ExtensionAPI) {
 			// Fast local heuristic -- avoids a Haiku call for obvious cases
 			const fast = quickClassify(prompt);
 			let decision: "sonnet" | "opus";
+			let viaHaiku = false;
 
 			if (fast !== "uncertain") {
 				decision = fast;
 			} else {
-				ctx.ui.setStatus("router", "routing…");
+				ctx.ui.setStatus("router", "⇢ routing…");
 
 				const result = await completeSimple(haiku, {
 					systemPrompt: CLASSIFY_PROMPT,
@@ -141,18 +142,14 @@ export default function (pi: ExtensionAPI) {
 					.join("");
 
 				decision = parseRoutingDecision(answer);
+				viaHaiku = true;
 			}
 
-			let targetId: string;
-			if (decision === "opus") {
-				targetId = OPUS_ID;
-			} else {
-				targetId = SONNET_ID;
-			}
+			const targetId = decision === "opus" ? OPUS_ID : SONNET_ID;
+			const modelName = decision === "opus" ? "opus" : "sonnet";
+			const label = viaHaiku ? `⇢ ${modelName} · haiku` : `⇢ ${modelName}`;
 
 			const currentId = ctx.model?.id;
-
-			const label = `request routed to ${targetId.includes("opus") ? "opus 4.6" : "sonnet 4.6"}`;
 
 			if (currentId !== targetId) {
 				const targetModel = ctx.modelRegistry.find("anthropic", targetId);
@@ -163,13 +160,13 @@ export default function (pi: ExtensionAPI) {
 				const success = await pi.setModel(targetModel);
 				if (success) {
 					lastRouted = targetId;
-					ctx.ui.setStatus("router", `→ ${label}`);
+					ctx.ui.setStatus("router", label);
 				} else {
 					ctx.ui.setStatus("router", `⚠ setModel failed for ${targetId}`);
 				}
 			} else {
 				lastRouted = targetId;
-				ctx.ui.setStatus("router", `→ ${label}`);
+				ctx.ui.setStatus("router", label);
 			}
 		} catch (e) {
 			ctx.ui.setStatus("router", `⚠ ${e instanceof Error ? e.message : String(e)}`);
