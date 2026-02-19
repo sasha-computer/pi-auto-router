@@ -12,7 +12,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { completeSimple } from "@mariozechner/pi-ai";
-import { quickClassify, parseRoutingDecision } from "./auto-router-logic";
+import { quickClassify, parseRoutingDecision } from "../lib/auto-router-logic";
 
 const SONNET_ID = "claude-sonnet-4-6";
 const OPUS_ID = "claude-opus-4-6";

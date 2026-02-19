@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { quickClassify, parseRoutingDecision, OPUS_SIGNALS } from "./auto-router-logic";
+import { quickClassify, parseRoutingDecision, OPUS_SIGNALS } from "../lib/auto-router-logic";
 
 // ---------------------------------------------------------------------------
 // quickClassify
