@@ -12,6 +12,7 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { completeSimple } from "@mariozechner/pi-ai";
+import { quickClassify, parseRoutingDecision } from "./auto-router-logic";
 
 const SONNET_ID = "claude-sonnet-4-6";
 const OPUS_ID = "claude-opus-4-6";
@@ -120,22 +121,30 @@ export default function (pi: ExtensionAPI) {
 		}
 
 		try {
-			ctx.ui.setStatus("router", "routing…");
+			// Fast local heuristic -- avoids a Haiku call for obvious cases
+			const fast = quickClassify(prompt);
+			let decision: "sonnet" | "opus";
 
-			const result = await completeSimple(haiku, {
-				systemPrompt: CLASSIFY_PROMPT,
-				messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
-			}, { maxTokens: 16, apiKey });
+			if (fast !== "uncertain") {
+				decision = fast;
+			} else {
+				ctx.ui.setStatus("router", "routing…");
 
-			const answer = result.content
-				.filter((c): c is { type: "text"; text: string } => c.type === "text")
-				.map((c) => c.text)
-				.join("")
-				.trim()
-				.toLowerCase();
+				const result = await completeSimple(haiku, {
+					systemPrompt: CLASSIFY_PROMPT,
+					messages: [{ role: "user", content: [{ type: "text", text: prompt }] }],
+				}, { maxTokens: 16, apiKey });
+
+				const answer = result.content
+					.filter((c): c is { type: "text"; text: string } => c.type === "text")
+					.map((c) => c.text)
+					.join("");
+
+				decision = parseRoutingDecision(answer);
+			}
 
 			let targetId: string;
-			if (answer.includes("opus")) {
+			if (decision === "opus") {
 				targetId = OPUS_ID;
 			} else {
 				targetId = SONNET_ID;
